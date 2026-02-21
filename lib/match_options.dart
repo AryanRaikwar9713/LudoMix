@@ -465,8 +465,10 @@ class _MatchingScreenState extends State<MatchingScreen> {
         displayProfiles.add({}); // Empty map for placeholder
       }
     } else {
-      // If not searching, just use the opponentProfiles list (should contain 4 players if matched)
-      displayProfiles = _opponentProfiles;
+      // If not searching, use only the required number of players (2 for 2v2, 4 for 4v4)
+      displayProfiles = _opponentProfiles.length >= _playersRequired
+          ? _opponentProfiles.sublist(0, _playersRequired)
+          : List<Map<String, dynamic>>.from(_opponentProfiles);
     }
 
     return WillPopScope(
@@ -772,7 +774,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: List.generate(4, (index) {
+          children: List.generate(_playersRequired, (index) {
             final player =
                 index < displayProfiles.length ? displayProfiles[index] : null;
             // Pass the random seed to the PlayerCard
