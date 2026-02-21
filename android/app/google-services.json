@@ -1,0 +1,55 @@
+{
+  "project_info": {
+    "project_number": "890756936346",
+    "firebase_url": "https://ludo-cb346-default-rtdb.asia-southeast1.firebasedatabase.app",
+    "project_id": "ludo-cb346",
+    "storage_bucket": "ludo-cb346.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:890756936346:android:eca31776495092b3c32523",
+        "android_client_info": {
+          "package_name": "com.ludo.game.ai.io"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "890756936346-jtjltmu3j7p26hgsm3j8ts43jg7pfdlk.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ludo.game.ai.io",
+            "certificate_hash": "b53cf86fb8cab73e857842c880a00ca5f8538086"
+          }
+        },
+        {
+          "client_id": "890756936346-mg2avpfik24g15bdcmialtgauonhm31h.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKGD1ORSQxiy_jEhFfsGBFxmzrBYVagCs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "890756936346-mg2avpfik24g15bdcmialtgauonhm31h.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "890756936346-03guna102jh9bse0635rthj41m4o4riq.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.ludo.game.ai.io"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,23 @@
+{
+  "version": "1.0.0",
+  "name": "ludo",
+  "description": "Workspace with 1 folder(s)",
+  "createdAt": "2026-02-18T13:02:43.944Z",
+  "updatedAt": "2026-02-18T13:02:43.944Z",
+  "roots": [
+    {
+      "path": "/Users/aryanraikwar/flutter_projects/ludozones/drive-download-20260217T085305Z-1-001/ludo",
+      "name": "ludo",
+      "index": {
+        "enabled": true,
+        "lastIndexedAt": "2026-02-18T13:01:11.356Z"
+      }
+    }
+  ],
+  "settings": {
+    "activeRootId": "root-1771418845145-4nsn7v6w1",
+    "expandedPaths": [
+      "d5a3e12a-13d8-4b65-8bc3-b643336cd4dc"
+    ]
+  }
+}
