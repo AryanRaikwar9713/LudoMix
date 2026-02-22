@@ -24,3 +24,9 @@ The app sends `playersRequired` (2 or 4) when creating a match. For 2v2 to work,
 | 4v4  | 4               | 4 players joined     | 4                  |
 
 If the backend always waits for 4 players, 2v2 will never start. It must treat a match as full when `players_count >= players_required` for that match.
+
+---
+
+## 4v4 winning amount (optional – from backend)
+
+For **4v4**, the app currently uses: `winning = entryFee × 3`. If you want to control 4v4 prize from backend, the API can return a field like `winningAmount` in the match/create or check_match response, and the app can use that when present.

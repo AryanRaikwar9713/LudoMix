@@ -27,7 +27,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
   String _profilePicUrl = "";
   int _userCoins = 0;
   int _entryFee = 12;
-  int _winningAmount = 40; // Initial value, will be calculated
+  int _winningAmount = 36; // 4v4 default: 12*3; updated by _computeWinningAmount()
   bool _isLoadingUserData = true;
   bool _isSearching = false;
   bool _isCancelling = false;
@@ -36,6 +36,22 @@ class _MatchingScreenState extends State<MatchingScreen> {
   int _searchSeconds = 0;
   final int _matchTimeoutSeconds = 90;
   int _playersRequired = 4; // 2 for 2v2, 4 for 4v4
+
+  /// 2v2 fixed winning amount per entry (Flutter-side; 4v4 can use backend)
+  static const Map<int, int> _2v2EntryToWinning = {
+    12: 20,
+    17: 30,
+    24: 40,
+    30: 50,
+    36: 62,
+  };
+
+  int _computeWinningAmount() {
+    if (_playersRequired == 2) {
+      return _2v2EntryToWinning[_entryFee] ?? (_entryFee * 2);
+    }
+    return _entryFee * (_playersRequired - 1); // 4v4: entry * 3
+  }
 
   // Match Data
   List<Map<String, dynamic>> _opponentProfiles = [];
@@ -610,7 +626,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
                   if (!_isSearching) {
                     setState(() {
                       _playersRequired = 2;
-                      _winningAmount = _entryFee * 2; // 2 players
+                      _winningAmount = _computeWinningAmount();
                     });
                   }
                 },
@@ -628,7 +644,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
                   if (!_isSearching) {
                     setState(() {
                       _playersRequired = 4;
-                      _winningAmount = _entryFee * 3; // Prize for 4 players
+                      _winningAmount = _computeWinningAmount(); // 4v4: entry*3 (or backend later)
                     });
                   }
                 },
@@ -662,7 +678,7 @@ class _MatchingScreenState extends State<MatchingScreen> {
                 if (!_isSearching) {
                   setState(() {
                     _entryFee = fee;
-                    _winningAmount = fee * (_playersRequired - 1);
+                    _winningAmount = _computeWinningAmount();
                   });
                 }
               },
