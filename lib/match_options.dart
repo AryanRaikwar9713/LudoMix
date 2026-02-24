@@ -487,8 +487,10 @@ class _MatchingScreenState extends State<MatchingScreen> {
           : List<Map<String, dynamic>>.from(_opponentProfiles);
     }
 
-    return WillPopScope(
-      onWillPop: () async {
+    return PopScope(
+      canPop: !_isSearching,
+      onPopInvokedWithResult: (bool didPop, dynamic result) async {
+        if (didPop) return;
         if (_isSearching) {
           final confirmCancel = await showDialog<bool>(
             context: context,
@@ -506,14 +508,11 @@ class _MatchingScreenState extends State<MatchingScreen> {
               ],
             ),
           );
-          if (confirmCancel == true) {
+          if (confirmCancel == true && context.mounted) {
             await _cancelMatchmaking();
-            return true;
-          } else {
-            return false;
+            if (context.mounted) Navigator.of(context).pop();
           }
         }
-        return true;
       },
       child: Scaffold(
         appBar: AppBar(

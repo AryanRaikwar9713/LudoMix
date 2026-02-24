@@ -593,6 +593,12 @@ class _GameScreenState extends State<GameScreen> {
               ],
             ),
           ),
+          // Board vars overlay - sabse upar taaki dikhe
+          const Positioned(
+            top: 10,
+            left: 10,
+            child: BoardVarsOverlay(),
+          ),
         ],
       ),
     );
@@ -718,6 +724,171 @@ class _GameScreenState extends State<GameScreen> {
           ],
         );
       },
+    );
+  }
+}
+
+/// Overlay on board screen to show variables & positions used for rendering.
+class BoardVarsOverlay extends StatefulWidget {
+  const BoardVarsOverlay({super.key});
+
+  @override
+  State<BoardVarsOverlay> createState() => _BoardVarsOverlayState();
+}
+
+class _BoardVarsOverlayState extends State<BoardVarsOverlay> {
+  bool _visible = true;
+
+  static double _ludoBoardSize(BuildContext context) {
+    final width = MediaQuery.of(context).size.width;
+    if (width > 500) return 500;
+    if (width < 300) return 300;
+    return width - 20;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          GestureDetector(
+            onTap: () => setState(() => _visible = !_visible),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                color: const Color(0xFF1B5E20),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: Colors.white, width: 2),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _visible ? Icons.keyboard_arrow_up : Icons.info_outline,
+                    color: Colors.amberAccent,
+                    size: 24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    _visible ? 'Hide Vars' : 'Vars / Position',
+                    style: const TextStyle(
+                      color: Colors.amberAccent,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (_visible) ...[
+            const SizedBox(height: 6),
+            Consumer<Ludo>(
+              builder: (context, ludo, _) {
+                final boardSize = _ludoBoardSize(context);
+                final boxStep = boardSize / 15;
+                return Container(
+                  constraints: const BoxConstraints(maxWidth: 320, maxHeight: 380),
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.85),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: Colors.white38),
+                  ),
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _row('gameState', ludo.gameState.toString()),
+                        _row('currentTurn', ludo.currentPlayer.type.toString()),
+                        _row('diceResult', '${ludo.diceResult}'),
+                        _row('myColor (You)', ludo.myColor?.name ?? '—'),
+                        _row('boardSize', boardSize.toStringAsFixed(1)),
+                        _row('boxStepSize', boxStep.toStringAsFixed(2)),
+                        const Divider(color: Colors.white38, height: 16),
+                        ...ludo.players.map((player) {
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                player.type.name,
+                                style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 12,
+                                ),
+                              ),
+                              ...List.generate(player.pawns.length, (i) {
+                                final p = player.pawns[i];
+                                final List<double> coord = p.step < 0
+                                    ? player.homePath[p.index]
+                                    : player.path[p.step];
+                                final left = LudoPath.stepBox(boardSize, coord[0]);
+                                final top = LudoPath.stepBox(boardSize, coord[1]);
+                                return Padding(
+                                  padding: const EdgeInsets.only(left: 8, top: 2),
+                                  child: Text(
+                                    '  P$i step=${p.step} pos=[${coord[0].toStringAsFixed(1)},${coord[1].toStringAsFixed(1)}] px=(${left.toStringAsFixed(0)},${top.toStringAsFixed(0)})',
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 10,
+                                      fontFamily: 'monospace',
+                                    ),
+                                  ),
+                                );
+                              }),
+                              const SizedBox(height: 6),
+                            ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: const TextStyle(
+                color: Colors.cyanAccent,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(color: Colors.white, fontSize: 11),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

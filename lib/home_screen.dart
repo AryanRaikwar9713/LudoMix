@@ -30,7 +30,6 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _dbUserId;
   String _userName = 'User';
   String _profilePicture = '';
-  String _userEmail = '';
 
   @override
   void initState() {
@@ -74,7 +73,6 @@ class _HomeScreenState extends State<HomeScreen> {
     User? user = _auth.currentUser;
     if (user != null) {
       _firebaseUid = user.uid;
-      _userEmail = user.email ?? '';
 
       final response = await http.post(
         Uri.parse('https://ludo.eventsystem.online/api/create_or_get_user.php'),

@@ -221,6 +221,8 @@ class Ludo extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _gameSubscription;
   bool get isOnlineGame => _matchId != null && _userId != null;
   bool get isMyTurn => !isOnlineGame || _currentTurn == _myColor;
+  /// Current user's pawn color (online: set from match; offline: null).
+  LudoPlayerType? get myColor => _myColor;
 
   int get diceResult {
     if (_diceResult < 1) {
