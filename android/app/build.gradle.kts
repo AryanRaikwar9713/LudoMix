@@ -1,8 +1,18 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("com.google.gms.google-services") // FlutterFire Configuration
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin") // Flutter Plugin
+}
+
+// Load keystore properties
+val keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -29,10 +39,11 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("ludovibes.keystore")
-            storePassword = "ludovibes123"
-            keyAlias = "ludovibes"
-            keyPassword = "ludovibes123"
+            keyAlias = keystoreProperties["keyAlias"] as String?
+            keyPassword = keystoreProperties["keyPassword"] as String?
+            val storeFileString = keystoreProperties["storeFile"] as String?
+            storeFile = storeFileString?.let { file(it) }
+            storePassword = keystoreProperties["storePassword"] as String?
         }
     }
 

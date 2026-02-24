@@ -10,9 +10,15 @@ import 'game/game_data.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+  } catch (e) {
+    debugPrint('Firebase initialization error: $e');
+    // Continue even if Firebase fails - app should still work
+  }
 
   // Removed: auto Google sign-in on startup was forcing popup for phone/PIN users
   // User chooses login method (Phone/PIN or Google) on LoginPage
@@ -37,7 +43,9 @@ class Root extends StatefulWidget {
 class _RootState extends State<Root> {
   @override
   void initState() {
-    /// Initialize images and precache them
+    super.initState();
+
+    /// Initialize images and precache them (non-blocking)
     SchedulerBinding.instance.addPostFrameCallback((_) {
       Future.wait([
         precacheImage(const AssetImage("assets/images/thankyou.gif"), context),
@@ -52,9 +60,12 @@ class _RootState extends State<Root> {
         precacheImage(const AssetImage("assets/images/crown/1st.png"), context),
         precacheImage(const AssetImage("assets/images/crown/2nd.png"), context),
         precacheImage(const AssetImage("assets/images/crown/3rd.png"), context),
-      ]);
+      ]).catchError((error) {
+        debugPrint('Image precaching error: $error');
+        // Continue even if image precaching fails
+        return <void>[];
+      });
     });
-    super.initState();
   }
 
   @override

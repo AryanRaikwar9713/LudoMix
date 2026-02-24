@@ -199,7 +199,9 @@ class LudoPlayer {
     if (pawnsData == null) return;
     final list = pawnsData is List ? pawnsData : pawnsData.values.toList();
     for (int i = 0; i < pawns.length && i < list.length; i++) {
-      final m = list[i] is Map ? Map<dynamic, dynamic>.from(list[i] as Map) : <dynamic, dynamic>{};
+      final m = list[i] is Map
+          ? Map<dynamic, dynamic>.from(list[i] as Map)
+          : <dynamic, dynamic>{};
       pawns[i] = pawns[i].updateFromMap(m);
     }
   }
@@ -221,6 +223,7 @@ class Ludo extends ChangeNotifier {
   StreamSubscription<DatabaseEvent>? _gameSubscription;
   bool get isOnlineGame => _matchId != null && _userId != null;
   bool get isMyTurn => !isOnlineGame || _currentTurn == _myColor;
+
   /// Current user's pawn color (online: set from match; offline: null).
   LudoPlayerType? get myColor => _myColor;
 
@@ -453,6 +456,7 @@ class Ludo extends ChangeNotifier {
     if (winners.contains(_currentTurn)) return nextTurn();
     _gameState = LudoGameState.throwDice;
     notifyListeners();
+    if (isOnlineGame) _broadcastState();
   }
 
   void validateWin(LudoPlayerType color) {
@@ -463,11 +467,13 @@ class Ludo extends ChangeNotifier {
         .every((element) => element == player(color).path.length - 1)) {
       winners.add(color);
       notifyListeners();
+      if (isOnlineGame) _broadcastState();
     }
 
     // 2v2: 1 winner = game over. 4v4: 3 winners (4th loses) = game over
     if ((_playerCount == 2 && winners.length == 1) || winners.length == 3) {
       _gameState = LudoGameState.finish;
+      if (isOnlineGame) _broadcastState();
     }
   }
 
@@ -498,7 +504,10 @@ class Ludo extends ChangeNotifier {
     _gameState = LudoGameState.throwDice;
     _diceResult = 1;
 
-    if (matchId != null && userId != null && playerList != null && playerList.isNotEmpty) {
+    if (matchId != null &&
+        userId != null &&
+        playerList != null &&
+        playerList.isNotEmpty) {
       _initOnlineGame(playerList);
     }
     notifyListeners();
@@ -512,14 +521,31 @@ class Ludo extends ChangeNotifier {
   ];
 
   void _initOnlineGame(List<Map<String, dynamic>> playerList) {
+    // Remove duplicates and sort by id to ensure consistent color assignment across all devices
+    final uniquePlayers = <String, Map<String, dynamic>>{};
+    for (var player in playerList) {
+      final playerId = player['id']?.toString() ?? '';
+      if (playerId.isNotEmpty && !uniquePlayers.containsKey(playerId)) {
+        uniquePlayers[playerId] = player;
+      }
+    }
+
+    // Sort players by id to ensure consistent order across all devices
+    final sortedPlayerIds = uniquePlayers.keys.toList()..sort();
+    final sortedPlayerList =
+        sortedPlayerIds.map((id) => uniquePlayers[id]!).toList();
+
+    // Find current user's index in sorted list
     int myIndex = -1;
-    for (int i = 0; i < playerList.length; i++) {
-      if (playerList[i]['id']?.toString() == _userId) {
+    for (int i = 0; i < sortedPlayerList.length; i++) {
+      if (sortedPlayerList[i]['id']?.toString() == _userId) {
         myIndex = i;
         break;
       }
     }
     if (myIndex < 0) myIndex = 0;
+
+    // Assign color based on sorted position
     _myColor = _playerCount == 2
         ? (myIndex == 0 ? LudoPlayerType.green : LudoPlayerType.red)
         : _colorOrder[myIndex.clamp(0, 3)];
@@ -571,7 +597,8 @@ class Ludo extends ChangeNotifier {
         for (var item in w) {
           final s = item.toString();
           try {
-            winners.add(LudoPlayerType.values.firstWhere((e) => e.toString() == s));
+            winners.add(
+                LudoPlayerType.values.firstWhere((e) => e.toString() == s));
           } catch (_) {}
         }
       }
@@ -582,9 +609,13 @@ class Ludo extends ChangeNotifier {
   }
 
   void _broadcastState() {
-    if (_matchRef == null || _userId == null) return;
+    if (_matchRef == null || _userId == null) {
+      debugPrint(
+          'Ludo _broadcastState: _matchRef or _userId is null. matchRef: $_matchRef, userId: $_userId');
+      return;
+    }
     try {
-      _matchRef!.update({
+      final stateData = {
         'currentTurn': _currentTurn.toString(),
         'diceResult': _diceResult,
         'gameState': _gameState.toString(),
@@ -593,6 +624,13 @@ class Ludo extends ChangeNotifier {
         'playerCount': _playerCount,
         'lastUpdated': ServerValue.timestamp,
         'lastUpdatedBy': _userId,
+      };
+      debugPrint(
+          'Ludo _broadcastState: Broadcasting state - turn: ${_currentTurn}, dice: $_diceResult, state: $_gameState');
+      _matchRef!.update(stateData).then((_) {
+        debugPrint('Ludo _broadcastState: Successfully broadcasted state');
+      }).catchError((error) {
+        debugPrint('Ludo _broadcastState error: $error');
       });
     } catch (e) {
       debugPrint('Ludo _broadcastState error: $e');
@@ -610,10 +648,13 @@ class Ludo extends ChangeNotifier {
           : LudoPlayerType.green;
     } else {
       nextTurn();
+      // nextTurn() already calls _broadcastState(), so return here
+      return;
     }
     if (winners.contains(_currentTurn)) return nextTurnForMode();
     _gameState = LudoGameState.throwDice;
     notifyListeners();
+    if (isOnlineGame) _broadcastState();
   }
 
   @override

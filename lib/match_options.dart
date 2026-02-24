@@ -357,13 +357,34 @@ class _MatchingScreenState extends State<MatchingScreen> {
         // Ensure _opponentProfiles is updated with the final matched players
         _opponentProfiles =
             List<Map<String, dynamic>>.from(matchData['players'] ?? []);
-        _currentMatchId = matchData['id'].toString();
+        // Use matchData['id'] if available, otherwise keep existing _currentMatchId
+        // This fixes the issue where last player might not have 'id' in matchData
+        if (matchData['id'] != null && matchData['id'].toString().isNotEmpty) {
+          _currentMatchId = matchData['id'].toString();
+        } else if (_currentMatchId == null || _currentMatchId!.isEmpty) {
+          // If both are null/empty, try to get from matchData['matchId'] or other fields
+          _currentMatchId = matchData['matchId']?.toString() ?? 
+                           matchData['match_id']?.toString() ?? 
+                           null;
+          if (_currentMatchId == null || _currentMatchId!.isEmpty) {
+            debugPrint('Warning: Match ID is null in matchData. Available keys: ${matchData.keys}');
+          }
+        }
+        // If _currentMatchId is still null, we'll handle it in navigation
       });
 
       Future.delayed(const Duration(seconds: 3), () {
         if (mounted) {
           // Validate we have enough players (2 for 2v2, 4 for 4v4)
           if (_opponentProfiles.length >= _playersRequired) {
+            // Ensure matchId is available before navigating
+            if (_currentMatchId == null || _currentMatchId!.isEmpty) {
+              debugPrint('Error: Match ID is null or empty. Cannot navigate to game screen.');
+              _resetMatchmaking();
+              _showErrorSnackbar('Match ID error. Please try finding match again.');
+              return;
+            }
+            
             // Ensure the current user's profile is correctly included in the players list passed to GameScreen
             // The API should return the full list of 4 players including the current user.
             // We can double check or rely on the API's accuracy here.
