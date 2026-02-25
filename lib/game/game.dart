@@ -14,13 +14,17 @@ class DiceWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<Ludo>(
       builder: (context, value, child) => RippleAnimation(
-        color: value.gameState == LudoGameState.throwDice && value.isMyTurn
+        // Glow sirf us user ko dikhni chahiye jiska turn hai (isMyTurn)
+        // Dice animation (gif) sabko dikh sakta hai, par color ripple local hi rahega
+        color: (value.diceStarted || value.gameState == LudoGameState.throwDice) &&
+                value.isMyTurn
             ? value.currentPlayer.color
             : Colors.white.withOpacity(0),
         ripplesCount: 3,
         minRadius: 30,
         repeat: true,
         child: CupertinoButton(
+          // Only current user can roll, but everyone sees the animation/result
           onPressed: (value.gameState == LudoGameState.throwDice && value.isMyTurn)
               ? value.throwDice
               : null,
@@ -158,22 +162,81 @@ class BoardWidget extends StatelessWidget {
                       child: pawnsValue.first,
                     ));
                   } else {
+                    // Multiple pawns at same position - arrange them in a circle/stack
+                    double baseLeft = LudoPath.stepBox(ludoBoard(context), coordinates[0]);
+                    double baseTop = LudoPath.stepBox(ludoBoard(context), coordinates[1]);
+                    double pawnSize = boxStepSize(context);
+                    double offset = pawnSize * 0.15; // Offset for stacking
+                    
                     playersPawn.addAll(
                       List.generate(
                         pawnsValue.length,
                         (index) {
                           var e = pawnsValue[index];
-                          return AnimatedPositioned(
+                          // Calculate position in a circular/stacked arrangement
+                          double xOffset = 0;
+                          double yOffset = 0;
+                          
+                          // For 2 pawns: side by side
+                          if (pawnsValue.length == 2) {
+                            xOffset = offset * (index == 0 ? -1 : 1);
+                            yOffset = 0;
+                          }
+                          // For 3 pawns: triangle arrangement
+                          else if (pawnsValue.length == 3) {
+                            xOffset = offset * 1.5 * (index == 0 ? 0 : (index == 1 ? -1 : 1));
+                            yOffset = offset * 1.5 * (index == 0 ? -1 : 0.5);
+                          }
+                          // For 4 pawns: square arrangement
+                          else if (pawnsValue.length == 4) {
+                            xOffset = offset * 1.5 * (index % 2 == 0 ? -1 : 1);
+                            yOffset = offset * 1.5 * (index < 2 ? -1 : 1);
+                          }
+                          
+                          return Stack(
                             key: ValueKey("${e.type.name}_${e.index}"),
-                            duration: const Duration(milliseconds: 200),
-                            left: LudoPath.stepBox(
-                                    ludoBoard(context), coordinates[0]) +
-                                (index * 3),
-                            top: LudoPath.stepBox(
-                                ludoBoard(context), coordinates[1]),
-                            width: boxStepSize(context) - 5,
-                            height: boxStepSize(context),
-                            child: pawnsValue[index],
+                            children: [
+                              AnimatedPositioned(
+                                key: ValueKey("pos_${e.type.name}_${e.index}"),
+                                duration: const Duration(milliseconds: 200),
+                                left: baseLeft + xOffset,
+                                top: baseTop + yOffset,
+                                width: pawnSize * 0.85,
+                                height: pawnSize * 0.85,
+                                child: Transform.rotate(
+                                  angle: index * 0.1, // Slight rotation for visual effect
+                                  child: pawnsValue[index],
+                                ),
+                              ),
+                              // Count badge to show multiple pawns
+                              if (index == 0 && pawnsValue.length > 1)
+                                Positioned(
+                                  left: baseLeft + xOffset + pawnSize * 0.6,
+                                  top: baseTop + yOffset - 2,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.red,
+                                      shape: BoxShape.circle,
+                                      border: Border.all(color: Colors.white, width: 1),
+                                    ),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 16,
+                                      minHeight: 16,
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        '${pawnsValue.length}',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           );
                         },
                       ),
@@ -491,9 +554,8 @@ class _GameScreenState extends State<GameScreen> {
               ),
               Consumer<Ludo>(
                 builder: (context, value, child) {
-                  final isGameOver = value.playerCount == 2
-                      ? value.winners.length == 1
-                      : value.winners.length == 3;
+                  // Ab game turant end ho jayega jab koi bhi ek player jeet jaye
+                  final isGameOver = value.winners.isNotEmpty;
                   if (isGameOver) {
                     return Container(
                       color: Colors.black.withOpacity(0.8),
@@ -541,57 +603,70 @@ class _GameScreenState extends State<GameScreen> {
             ],
           ),
           // Player profiles overlay layer
-          Positioned.fill(
-            child: Stack(
-              children: [
-                // Player 1 (Green) - Bottom Left
-                Positioned(
-                  bottom: 10,
-                  left: 10,
-                  child: _buildUserProfile(
-                    p1['name'] ?? 'You',
-                    _fixProfilePictureUrl((p1['profilePic'] ?? '') as String)
-                        .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
-                        : _fixProfilePictureUrl(p1['profilePic'] as String),
-                  ),
+          Consumer<Ludo>(
+            builder: (context, ludo, child) {
+              final currentTurn = ludo.currentPlayer.type;
+              return Positioned.fill(
+                child: Stack(
+                  children: [
+                    // Player 1 (Green) - Bottom Left
+                    Positioned(
+                      bottom: 10,
+                      left: 10,
+                      child: _buildUserProfile(
+                        p1['name'] ?? 'You',
+                        _fixProfilePictureUrl((p1['profilePic'] ?? '') as String)
+                            .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
+                            : _fixProfilePictureUrl(p1['profilePic'] as String),
+                        playerColor: LudoPlayerType.green,
+                        isCurrentTurn: currentTurn == LudoPlayerType.green,
+                      ),
+                    ),
+                    // Player 2 (Yellow) - Top Left
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: _buildUserProfile(
+                        p2['name'] ?? (is2v2 ? '' : 'Player 2'),
+                        _fixProfilePictureUrl((p2['profilePic'] ?? '') as String)
+                            .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
+                            : _fixProfilePictureUrl(p2['profilePic'] as String),
+                        isEmpty: is2v2,
+                        playerColor: LudoPlayerType.yellow,
+                        isCurrentTurn: currentTurn == LudoPlayerType.yellow,
+                      ),
+                    ),
+                    // Player 3 (Blue) - Top Right
+                    Positioned(
+                      top: 10,
+                      right: 10,
+                      child: _buildUserProfile(
+                        p3['name'] ?? (is2v2 ? '' : 'Player 3'),
+                        _fixProfilePictureUrl((p3['profilePic'] ?? '') as String)
+                            .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
+                            : _fixProfilePictureUrl(p3['profilePic'] as String),
+                        isEmpty: is2v2,
+                        playerColor: LudoPlayerType.blue,
+                        isCurrentTurn: currentTurn == LudoPlayerType.blue,
+                      ),
+                    ),
+                    // Player 4 (Red) - Bottom Right
+                    Positioned(
+                      bottom: 10,
+                      right: 10,
+                      child: _buildUserProfile(
+                        p4['name'] ?? (is2v2 ? 'Opponent' : 'Player 4'),
+                        _fixProfilePictureUrl((p4['profilePic'] ?? '') as String)
+                            .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
+                            : _fixProfilePictureUrl(p4['profilePic'] as String),
+                        playerColor: LudoPlayerType.red,
+                        isCurrentTurn: currentTurn == LudoPlayerType.red,
+                      ),
+                    ),
+                  ],
                 ),
-                // Player 2 (Yellow) - Top Left
-                Positioned(
-                  top: 10,
-                  left: 10,
-                  child: _buildUserProfile(
-                    p2['name'] ?? (is2v2 ? '' : 'Player 2'),
-                    _fixProfilePictureUrl((p2['profilePic'] ?? '') as String)
-                        .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
-                        : _fixProfilePictureUrl(p2['profilePic'] as String),
-                    isEmpty: is2v2,
-                  ),
-                ),
-                // Player 3 (Blue) - Top Right
-                Positioned(
-                  top: 10,
-                  right: 10,
-                  child: _buildUserProfile(
-                    p3['name'] ?? (is2v2 ? '' : 'Player 3'),
-                    _fixProfilePictureUrl((p3['profilePic'] ?? '') as String)
-                        .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
-                        : _fixProfilePictureUrl(p3['profilePic'] as String),
-                    isEmpty: is2v2,
-                  ),
-                ),
-                // Player 4 (Red) - Bottom Right
-                Positioned(
-                  bottom: 10,
-                  right: 10,
-                  child: _buildUserProfile(
-                    p4['name'] ?? (is2v2 ? 'Opponent' : 'Player 4'),
-                    _fixProfilePictureUrl((p4['profilePic'] ?? '') as String)
-                        .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
-                        : _fixProfilePictureUrl(p4['profilePic'] as String),
-                  ),
-                ),
-              ],
-            ),
+              );
+            },
           ),
           // Board vars overlay - sabse upar taaki dikhe
           const Positioned(
@@ -604,7 +679,11 @@ class _GameScreenState extends State<GameScreen> {
     );
   }
 
-  Widget _buildUserProfile(String username, String imageUrl, {bool isEmpty = false}) {
+  Widget _buildUserProfile(String username, String imageUrl, {
+    bool isEmpty = false,
+    LudoPlayerType? playerColor,
+    bool isCurrentTurn = false,
+  }) {
     if (isEmpty || username.isEmpty) {
       return Container(
         width: 80,
@@ -617,6 +696,32 @@ class _GameScreenState extends State<GameScreen> {
         child: Text('—', style: TextStyle(color: Colors.grey[600], fontSize: 24)),
       );
     }
+    
+    // Get color based on player type and turn
+    Color cardColor = Colors.grey[500]!;
+    Color borderColor = Colors.grey.shade600;
+    
+    if (isCurrentTurn && playerColor != null) {
+      switch (playerColor) {
+        case LudoPlayerType.green:
+          cardColor = LudoColor.green;
+          borderColor = LudoColor.green;
+          break;
+        case LudoPlayerType.yellow:
+          cardColor = LudoColor.yellow;
+          borderColor = LudoColor.yellow;
+          break;
+        case LudoPlayerType.blue:
+          cardColor = LudoColor.blue;
+          borderColor = LudoColor.blue;
+          break;
+        case LudoPlayerType.red:
+          cardColor = LudoColor.red;
+          borderColor = LudoColor.red;
+          break;
+      }
+    }
+    
     return GestureDetector(
       onTap: () {
         _showUserProfileDialog(username, imageUrl);
@@ -624,13 +729,18 @@ class _GameScreenState extends State<GameScreen> {
       child: Container(
         width: 120,
         decoration: BoxDecoration(
-          color: Colors.grey[500],
+          color: cardColor,
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.grey.shade600, width: 1),
+          border: Border.all(
+            color: isCurrentTurn ? borderColor : Colors.grey.shade600,
+            width: isCurrentTurn ? 3 : 1,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 15,
+              color: isCurrentTurn 
+                  ? borderColor.withOpacity(0.6)
+                  : Colors.black.withOpacity(0.5),
+              blurRadius: isCurrentTurn ? 20 : 15,
               offset: const Offset(0, 5),
             ),
           ],

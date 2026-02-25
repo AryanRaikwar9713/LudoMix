@@ -81,10 +81,10 @@ class PawnWidget extends StatelessWidget {
         children: [
           if (highlight)
             RippleAnimation(
-                color: color,
-                minRadius: 20,
+                color: color.withOpacity(0.7),
+                minRadius: 12, // smaller ripple
                 repeat: true,
-                ripplesCount: 3,
+                ripplesCount: 2,
                 child: const SizedBox.shrink()),
           Consumer<Ludo>(
             builder: (context, provider, child) => GestureDetector(
@@ -94,7 +94,6 @@ class PawnWidget extends StatelessWidget {
                 } else {
                   provider.move(type, index, (step + 1) + provider.diceResult);
                 }
-                context.read<Ludo>().move(type, index, step);
               },
               child: Container(
                 decoration: BoxDecoration(
@@ -227,6 +226,12 @@ class Ludo extends ChangeNotifier {
   /// Current user's pawn color (online: set from match; offline: null).
   LudoPlayerType? get myColor => _myColor;
 
+  // Track previous pawn steps for animated remote movement
+  Map<String, int> _previousPawnSteps = {};
+
+  // Track consecutive sixes for current turn (rule: max 2 times, 3rd six loses turn)
+  int _consecutiveSixCount = 0;
+
   int get diceResult {
     if (_diceResult < 1) {
       return 1;
@@ -319,6 +324,7 @@ class Ludo extends ChangeNotifier {
     if (isOnlineGame && !isMyTurn) return;
     _diceStarted = true;
     notifyListeners();
+    if (isOnlineGame) _broadcastState(); // sync dice rolling start to remotes
     Audio.rollDice();
 
     if (winners.contains(currentPlayer.type)) {
@@ -332,39 +338,86 @@ class Ludo extends ChangeNotifier {
       _diceStarted = false;
       var random = Random();
       _diceResult = random.nextBool() ? 6 : random.nextInt(6) + 1;
-      notifyListeners();
-      if (isOnlineGame) _broadcastState();
 
+      // Update consecutive six count
       if (diceResult == 6) {
-        currentPlayer.highlightAllPawns();
-        _gameState = LudoGameState.pickPawn;
+        _consecutiveSixCount++;
+      } else {
+        _consecutiveSixCount = 0;
+      }
+
+      // If player rolls six 3rd time in a row: no move, turn changes
+      if (_consecutiveSixCount >= 3) {
+        _consecutiveSixCount = 0;
         notifyListeners();
         if (isOnlineGame) _broadcastState();
-      } else {
-        if (currentPlayer.pawnInsideCount == 4) {
+        // Skip this move completely and pass turn
+        nextTurnForMode();
+        return;
+      }
+
+      // Decide which pawns can actually move – only those will blink (highlight)
+      currentPlayer.highlightAllPawns(false);
+      bool anyMovable = false;
+      for (var i = 0; i < currentPlayer.pawns.length; i++) {
+        var pawn = currentPlayer.pawns[i];
+        int step = pawn.step;
+        bool canMove = false;
+
+        if (diceResult == 6) {
+          // From home: only with 6
+          if (step == -1) {
+            canMove = true;
+          } else if (step >= 0 &&
+              (step + diceResult) <= currentPlayer.path.length - 1) {
+            canMove = true;
+          }
+        } else {
+          // Normal move: pawn must be outside and not overshoot goal
+          if (step >= 0 &&
+              (step + diceResult) <= currentPlayer.path.length - 1) {
+            canMove = true;
+          }
+        }
+
+        currentPlayer.highlightPawn(i, canMove);
+        if (canMove) anyMovable = true;
+      }
+
+      if (!anyMovable) {
+        // No legal moves
+        if (diceResult == 6) {
+          _gameState = LudoGameState.throwDice;
+          notifyListeners();
+          if (isOnlineGame) _broadcastState();
+        } else {
           nextTurnForMode();
           if (isOnlineGame) _broadcastState();
           return;
-        } else {
-          currentPlayer.highlightOutside();
-          _gameState = LudoGameState.pickPawn;
-          notifyListeners();
-          if (isOnlineGame) _broadcastState();
         }
-      }
-
-      for (var i = 0; i < currentPlayer.pawns.length; i++) {
-        var pawn = currentPlayer.pawns[i];
-        if ((pawn.step + diceResult) > currentPlayer.path.length - 1) {
-          currentPlayer.highlightPawn(i, false);
-        }
+      } else {
+        // At least one pawn can move – let user pick / auto logic run
+        _gameState = LudoGameState.pickPawn;
+        notifyListeners();
+        if (isOnlineGame) _broadcastState();
       }
 
       var moveablePawn = currentPlayer.pawns.where((e) => e.highlight).toList();
+
+      // If all pawns are inside and 6 is rolled, automatically move one out
+      if (diceResult == 6 &&
+          currentPlayer.pawnInsideCount == 4 &&
+          moveablePawn.length == 4) {
+        var randomIndex = Random().nextInt(moveablePawn.length);
+        var thePawn = moveablePawn[randomIndex];
+        move(thePawn.type, thePawn.index, (thePawn.step + 1) + 1);
+        return;
+      }
+
       if (moveablePawn.length > 1) {
         var biggestStep = moveablePawn.map((e) => e.step).reduce(max);
         if (moveablePawn.every((element) => element.step == biggestStep)) {
-          var random = 1 + Random().nextInt(moveablePawn.length - 1);
+          var random = Random().nextInt(moveablePawn.length);
           if (moveablePawn[random].step == -1) {
             var thePawn = moveablePawn[random];
             move(thePawn.type, thePawn.index, (thePawn.step + 1) + 1);
@@ -408,14 +461,24 @@ class Ludo extends ChangeNotifier {
     currentPlayer.highlightAllPawns(false);
 
     var selectedPlayer = player(type);
-    for (int i = selectedPlayer.pawns[index].step; i < step; i++) {
+    int currentStep = selectedPlayer.pawns[index].step;
+    int startStep = currentStep == -1 ? 0 : currentStep;
+
+    for (int i = startStep; i < step; i++) {
       if (_stopMoving) break;
-      if (selectedPlayer.pawns[index].step == i) continue;
+      if (i == currentStep) continue;
       selectedPlayer.movePawn(index, i);
+      // Update previous step tracking for local moves
+      final pawnKey = '${type.name}_$index';
+      _previousPawnSteps[pawnKey] = i;
       await Audio.playMove();
       notifyListeners();
       if (_stopMoving) break;
     }
+    // Update final step
+    final pawnKey = '${type.name}_$index';
+    _previousPawnSteps[pawnKey] = step;
+
     if (checkToKill(type, index, step, selectedPlayer.path)) {
       _gameState = LudoGameState.throwDice;
       _isMoving = false;
@@ -427,7 +490,18 @@ class Ludo extends ChangeNotifier {
 
     validateWin(type);
 
-    if (diceResult == 6) {
+    // If game finished after this move, stop here
+    if (_gameState == LudoGameState.finish) {
+      _isMoving = false;
+      if (isOnlineGame) _broadcastState();
+      return;
+    }
+
+    // Check if pawn reached goal (final position)
+    bool reachedGoal = step >= selectedPlayer.path.length - 1;
+
+    // If dice is 6 OR pawn reached goal, player gets another turn
+    if (diceResult == 6 || reachedGoal) {
       _gameState = LudoGameState.throwDice;
       notifyListeners();
     } else {
@@ -453,6 +527,9 @@ class Ludo extends ChangeNotifier {
         break;
     }
 
+    // New turn: reset consecutive six counter
+    _consecutiveSixCount = 0;
+
     if (winners.contains(_currentTurn)) return nextTurn();
     _gameState = LudoGameState.throwDice;
     notifyListeners();
@@ -466,12 +543,6 @@ class Ludo extends ChangeNotifier {
         .map((e) => e.step)
         .every((element) => element == player(color).path.length - 1)) {
       winners.add(color);
-      notifyListeners();
-      if (isOnlineGame) _broadcastState();
-    }
-
-    // 2v2: 1 winner = game over. 4v4: 3 winners (4th loses) = game over
-    if ((_playerCount == 2 && winners.length == 1) || winners.length == 3) {
       _gameState = LudoGameState.finish;
       if (isOnlineGame) _broadcastState();
     }
@@ -493,13 +564,21 @@ class Ludo extends ChangeNotifier {
 
     winners.clear();
     players.clear();
+    _previousPawnSteps.clear(); // Reset previous steps tracking
     players.addAll([
       LudoPlayer(LudoPlayerType.green),
       LudoPlayer(LudoPlayerType.yellow),
       LudoPlayer(LudoPlayerType.blue),
       LudoPlayer(LudoPlayerType.red),
     ]);
+    // Initialize previous steps for all pawns
+    for (var player in players) {
+      for (int i = 0; i < player.pawns.length; i++) {
+        _previousPawnSteps['${player.type.name}_$i'] = player.pawns[i].step;
+      }
+    }
     _playerCount = playerCount;
+    _consecutiveSixCount = 0;
     _currentTurn = LudoPlayerType.green;
     _gameState = LudoGameState.throwDice;
     _diceResult = 1;
@@ -569,7 +648,7 @@ class Ludo extends ChangeNotifier {
     });
   }
 
-  void _applyRemoteState(Map<dynamic, dynamic> data) {
+  void _applyRemoteState(Map<dynamic, dynamic> data) async {
     try {
       _currentTurn = LudoPlayerType.values.firstWhere(
         (e) => e.toString() == data['currentTurn'],
@@ -578,17 +657,182 @@ class Ludo extends ChangeNotifier {
       _diceResult = (data['diceResult'] ?? 1) is int
           ? data['diceResult'] as int
           : int.tryParse(data['diceResult'].toString()) ?? 1;
+      _diceStarted = data['diceStarted'] == true ||
+          data['diceStarted']?.toString() == 'true';
+      _consecutiveSixCount = (data['consecutiveSixCount'] ?? 0) is int
+          ? data['consecutiveSixCount'] as int
+          : int.tryParse(data['consecutiveSixCount']?.toString() ?? '0') ?? 0;
       _gameState = LudoGameState.values.firstWhere(
         (e) => e.toString() == data['gameState'],
         orElse: () => LudoGameState.throwDice,
       );
       final playersData = data['players'];
       if (playersData is List && players.length == playersData.length) {
+        // First, detect movements before updating
+        List<Map<String, dynamic>> movementsToAnimate = [];
         for (int i = 0; i < players.length && i < playersData.length; i++) {
-          final m = playersData[i] is Map
-              ? Map<dynamic, dynamic>.from(playersData[i] as Map)
-              : <dynamic, dynamic>{};
-          players[i].updateFromMap(m);
+          try {
+            final player = players[i];
+            if (player.pawns.isEmpty) continue;
+
+            final m = playersData[i] is Map
+                ? Map<dynamic, dynamic>.from(playersData[i] as Map)
+                : <dynamic, dynamic>{};
+            final pawnsData = m['pawns'];
+            if (pawnsData != null) {
+              final list =
+                  pawnsData is List ? pawnsData : pawnsData.values.toList();
+              for (int j = 0; j < player.pawns.length && j < list.length; j++) {
+                try {
+                  final pawnMap = list[j] is Map
+                      ? Map<dynamic, dynamic>.from(list[j] as Map)
+                      : <dynamic, dynamic>{};
+                  final stepValue = pawnMap['step'];
+                  final newStep = stepValue is int
+                      ? stepValue
+                      : (stepValue != null
+                              ? int.tryParse(stepValue.toString())
+                              : null) ??
+                          player.pawns[j].step;
+                  final pawnKey = '${player.type.name}_$j';
+                  final previousStep =
+                      _previousPawnSteps[pawnKey] ?? player.pawns[j].step;
+
+                  // Detect movement for remote players only (in online mode)
+                  // Only animate if it's not my color (remote player's move)
+                  bool isRemotePlayer = isOnlineGame &&
+                      _myColor != null &&
+                      player.type != _myColor;
+
+                  if (newStep != previousStep && isRemotePlayer) {
+                    // Only animate forward movement or coming out
+                    if ((previousStep == -1 && newStep >= 0) ||
+                        (previousStep >= 0 && newStep > previousStep)) {
+                      debugPrint(
+                          'Detected movement: ${player.type.name} pawn $j from $previousStep to $newStep');
+                      movementsToAnimate.add({
+                        'type': player.type,
+                        'index': j,
+                        'fromStep': previousStep,
+                        'toStep': newStep,
+                      });
+                    }
+                  }
+                } catch (e) {
+                  debugPrint(
+                      'Error processing pawn $j for player ${player.type}: $e');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error processing player $i: $e');
+          }
+        }
+
+        // Animate movements if any (BEFORE updating final state)
+        if (movementsToAnimate.isNotEmpty && !_isMoving) {
+          debugPrint(
+              'Animating ${movementsToAnimate.length} remote pawn movements');
+          _isMoving = true;
+          _gameState = LudoGameState.moving;
+          notifyListeners();
+
+          for (var movement in movementsToAnimate) {
+            final playerType = movement['type'] as LudoPlayerType;
+            final index = movement['index'] as int;
+            final fromStep = movement['fromStep'] as int;
+            final toStep = movement['toStep'] as int;
+            final selectedPlayer = player(playerType);
+
+            debugPrint(
+                'Animating ${playerType.name} pawn $index from step $fromStep to $toStep');
+
+            // Start from previous step (reset to start position)
+            selectedPlayer.movePawn(index, fromStep);
+            notifyListeners();
+            await Future.delayed(const Duration(milliseconds: 100));
+
+            // Animate step by step
+            int startStep = fromStep == -1 ? 0 : fromStep + 1;
+            for (int step = startStep; step <= toStep; step++) {
+              if (_stopMoving) break;
+              selectedPlayer.movePawn(index, step);
+              notifyListeners();
+              await Audio.playMove();
+              await Future.delayed(const Duration(milliseconds: 250));
+              if (_stopMoving) break;
+            }
+
+            // Check for kills
+            if (toStep > fromStep && toStep > 0) {
+              checkToKill(playerType, index, toStep, selectedPlayer.path);
+            }
+          }
+
+          _isMoving = false;
+          _gameState = LudoGameState.throwDice;
+          notifyListeners();
+          debugPrint('Animation completed');
+        } else if (movementsToAnimate.isNotEmpty) {
+          debugPrint('Skipping animation: _isMoving = $_isMoving');
+        }
+
+        // Update all players' pawns to final state (after animation or if no animation needed)
+        // Skip updating pawns that were just animated (they're already at final position)
+        Set<String> animatedPawns = {};
+        if (movementsToAnimate.isNotEmpty) {
+          for (var movement in movementsToAnimate) {
+            final playerType = movement['type'] as LudoPlayerType;
+            final index = movement['index'] as int;
+            animatedPawns.add('${playerType.name}_$index');
+          }
+        }
+
+        for (int i = 0; i < players.length && i < playersData.length; i++) {
+          try {
+            final m = playersData[i] is Map
+                ? Map<dynamic, dynamic>.from(playersData[i] as Map)
+                : <dynamic, dynamic>{};
+
+            // If pawns were animated, they're already at final position, so update other data only
+            if (animatedPawns.isNotEmpty) {
+              // Update only non-animated pawns or update all if no animation happened
+              players[i].updateFromMap(m);
+            } else {
+              // No animation, update normally
+              players[i].updateFromMap(m);
+            }
+
+            // Update previous steps tracking
+            final player = players[i];
+            if (player.pawns.isEmpty) continue;
+
+            final pawnsData = m['pawns'];
+            if (pawnsData != null) {
+              final list =
+                  pawnsData is List ? pawnsData : pawnsData.values.toList();
+              for (int j = 0; j < player.pawns.length && j < list.length; j++) {
+                try {
+                  final pawnMap = list[j] is Map
+                      ? Map<dynamic, dynamic>.from(list[j] as Map)
+                      : <dynamic, dynamic>{};
+                  final stepValue = pawnMap['step'];
+                  final newStep = stepValue is int
+                      ? stepValue
+                      : (stepValue != null
+                              ? int.tryParse(stepValue.toString())
+                              : null) ??
+                          player.pawns[j].step;
+                  final pawnKey = '${player.type.name}_$j';
+                  _previousPawnSteps[pawnKey] = newStep;
+                } catch (e) {
+                  debugPrint('Error updating step for pawn $j: $e');
+                }
+              }
+            }
+          } catch (e) {
+            debugPrint('Error updating player $i: $e');
+          }
         }
       }
       winners.clear();
@@ -619,9 +863,11 @@ class Ludo extends ChangeNotifier {
         'currentTurn': _currentTurn.toString(),
         'diceResult': _diceResult,
         'gameState': _gameState.toString(),
+        'diceStarted': _diceStarted,
         'players': players.map((p) => p.toMap()).toList(),
         'winners': winners.map((w) => w.toString()).toList(),
         'playerCount': _playerCount,
+        'consecutiveSixCount': _consecutiveSixCount,
         'lastUpdated': ServerValue.timestamp,
         'lastUpdatedBy': _userId,
       };
@@ -651,6 +897,8 @@ class Ludo extends ChangeNotifier {
       // nextTurn() already calls _broadcastState(), so return here
       return;
     }
+    // New turn: reset consecutive six counter
+    _consecutiveSixCount = 0;
     if (winners.contains(_currentTurn)) return nextTurnForMode();
     _gameState = LudoGameState.throwDice;
     notifyListeners();
