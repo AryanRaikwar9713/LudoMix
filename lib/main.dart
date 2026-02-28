@@ -8,6 +8,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
 import 'game/game_data.dart';
+import 'game2v2/game_data.dart'; // 2v2 specific provider
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +29,10 @@ Future<void> main() async {
 
   runApp(MultiProvider(
     providers: [
+      // 4v4 main game provider
       ChangeNotifierProvider(create: (_) => Ludo()..startGame()),
+      // 2v2 separate game provider (Green vs Red only)
+      ChangeNotifierProvider(create: (_) => Ludo2v2()..startGame(playerCount: 2)),
       // ChangeNotifierProvider(
       //     create: (_) => FourPlayerProvider()), // Add FourPlayerProvider
     ],

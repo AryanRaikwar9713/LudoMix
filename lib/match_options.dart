@@ -5,7 +5,10 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:audioplayers/audioplayers.dart';
 import 'package:ludo_flutter/game/game.dart';
+
 import 'dart:math';
+
+import 'package:ludo_flutter/game2v2/game.dart';
 
 // Base URL for your API
 const String _apiUrl = 'https://ludo.eventsystem.online/api/board';
@@ -392,12 +395,18 @@ class _MatchingScreenState extends State<MatchingScreen> {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => GameScreen(
-                  matchId: _currentMatchId!,
-                  userId: widget.userId,
-                  players: _opponentProfiles,
-                  playersRequired: _playersRequired,
-                ),
+                builder: (context) => _playersRequired == 2
+                    ? GameScreen2v2(
+                        matchId: _currentMatchId!,
+                        userId: widget.userId,
+                        players: _opponentProfiles,
+                      )
+                    : GameScreen(
+                        matchId: _currentMatchId!,
+                        userId: widget.userId,
+                        players: _opponentProfiles,
+                        playersRequired: _playersRequired,
+                      ),
               ),
             );
           } else {

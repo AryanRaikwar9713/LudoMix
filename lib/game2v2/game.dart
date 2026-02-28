@@ -10,12 +10,12 @@ import 'package:simple_ripple_animation/simple_ripple_animation.dart';
 import 'game_data.dart'; // Import the first part (Assuming this is correct)
 
 // Keep your existing DiceWidget class as is
-class DiceWidget extends StatelessWidget {
-  const DiceWidget({super.key});
+class DiceWidget2v2 extends StatelessWidget {
+  const DiceWidget2v2({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<Ludo>(
+    return Consumer<Ludo2v2>(
       builder: (context, value, child) => RippleAnimation(
         // Glow sirf us user ko dikhni chahiye jiska turn hai (isMyTurn)
         // Dice animation (gif) sabko dikh sakta hai, par color ripple local hi rahega
@@ -92,19 +92,19 @@ class BoardWidget extends StatelessWidget {
               alignment: Alignment.topCenter,
             ),
           ),
-          child: Consumer<Ludo>(
+          child: Consumer<Ludo2v2>(
             builder: (context, value, child) {
-              List<LudoPlayer> players = List.from(value.players);
+              List<LudoPlayer2v2> players = List.from(value.players);
 
-              // 2v2 mode: only Green and Red should be active on board
+              // 2v2 mode: only Green and Blue should be active on board
               if (value.playerCount == 2) {
                 players = players
                     .where((p) =>
                         p.type == LudoPlayerType.green ||
-                        p.type == LudoPlayerType.red)
+                        p.type == LudoPlayerType.blue)
                     .toList();
               }
-              Map<String, List<PawnWidget>> pawnsRaw = {};
+              Map<String, List<PawnWidget2v2>> pawnsRaw = {};
               Map<String, List<String>> pawnsToPrint = {};
               List<Widget> playersPawn = [];
 
@@ -112,7 +112,7 @@ class BoardWidget extends StatelessWidget {
                   .sort((a, b) => value.currentPlayer.type == a.type ? 1 : -1);
 
               // Track offline players for displaying "Offline" text
-              List<LudoPlayer> offlinePlayersList = [];
+              List<LudoPlayer2v2> offlinePlayersList = [];
               
               for (int i = 0; i < players.length; i++) {
                 var player = players[i];
@@ -143,7 +143,7 @@ class BoardWidget extends StatelessWidget {
               }
               
               for (String key in pawnsRaw.keys) {
-                List<PawnWidget> pawnsValue = pawnsRaw[key]!;
+                List<PawnWidget2v2> pawnsValue = pawnsRaw[key]!;
                 if (key == "home") {
                   playersPawn.addAll(
                     pawnsValue.map((e) {
@@ -453,25 +453,25 @@ class BoardWidget extends StatelessWidget {
       );
 }
 
-class GameScreen extends StatefulWidget {
+class GameScreen2v2 extends StatefulWidget {
   final String matchId;
   final String userId;
   final List<Map<String, dynamic>> players;
   final int playersRequired;
 
-  const GameScreen({
+  const GameScreen2v2({
     super.key,
     required this.matchId,
     required this.userId,
     required this.players,
-    this.playersRequired = 4,
+    this.playersRequired = 2,
   });
 
   @override
-  State<GameScreen> createState() => _GameScreenState();
+  State<GameScreen2v2> createState() => _GameScreen2v2State();
 }
 
-class _GameScreenState extends State<GameScreen> {
+class _GameScreen2v2State extends State<GameScreen2v2> {
   // Store player data in a list for easier access
   List<Map<String, dynamic>> gamePlayers = [];
   bool isLoading = true;
@@ -482,7 +482,7 @@ class _GameScreenState extends State<GameScreen> {
     super.initState();
     // Lock orientation to portrait only
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    context.read<Ludo>().startGame(
+    context.read<Ludo2v2>().startGame(
       playerCount: widget.playersRequired,
       matchId: widget.matchId,
       userId: widget.userId,
@@ -645,7 +645,7 @@ class _GameScreenState extends State<GameScreen> {
         );
         if (shouldLeave == true && mounted) {
           // Mark user as offline
-          context.read<Ludo>().handleUserLeave();
+          context.read<Ludo2v2>().handleUserLeave();
           // Navigate back
           if (mounted) {
             Navigator.of(context).pop();
@@ -672,7 +672,7 @@ class _GameScreenState extends State<GameScreen> {
                   decoration: const BoxDecoration(
                     color: Colors.white,
                   ),
-                  child: DiceWidget(),
+                  child: DiceWidget2v2(),
                 ),
               ),
               const SizedBox(height: 20),
@@ -691,7 +691,7 @@ class _GameScreenState extends State<GameScreen> {
                   ),
                 ),
               ),
-              Consumer<Ludo>(
+              Consumer<Ludo2v2>(
                 builder: (context, value, child) {
                   // Ab game turant end ho jayega jab koi bhi ek player jeet jaye
                   final isGameOver = value.winners.isNotEmpty;
@@ -709,7 +709,8 @@ class _GameScreenState extends State<GameScreen> {
                     } else if (winnerColor == LudoPlayerType.yellow) {
                       winnerPlayer = p2;
                     } else if (winnerColor == LudoPlayerType.blue) {
-                      winnerPlayer = p3;
+                      // In 2v2, Blue is bottom-right (p4); in 4-player, Blue is top-right (p3)
+                      winnerPlayer = is2v2 ? p4 : p3;
                     } else if (winnerColor == LudoPlayerType.red) {
                       winnerPlayer = p4;
                     }
@@ -852,7 +853,7 @@ class _GameScreenState extends State<GameScreen> {
             ],
           ),
           // Player profiles overlay layer
-          Consumer<Ludo>(
+          Consumer<Ludo2v2>(
             builder: (context, ludo, child) {
               final currentTurn = ludo.currentPlayer.type;
               final offlinePlayers = ludo.offlinePlayers;
@@ -903,7 +904,7 @@ class _GameScreenState extends State<GameScreen> {
                         isOffline: offlinePlayers.contains(LudoPlayerType.blue),
                       ),
                     ),
-                    // Player 4 (Red) - Bottom Right
+                    // Player 4 (Blue in 2v2, Red in 4-player) - Bottom Right
                     Positioned(
                       bottom: 10,
                       right: 10,
@@ -912,9 +913,14 @@ class _GameScreenState extends State<GameScreen> {
                         _fixProfilePictureUrl((p4['profilePic'] ?? '') as String)
                             .isEmpty ? '${ConstRes.base}/storage/profile/profile.png'
                             : _fixProfilePictureUrl(p4['profilePic'] as String),
-                        playerColor: LudoPlayerType.red,
-                        isCurrentTurn: currentTurn == LudoPlayerType.red,
-                        isOffline: offlinePlayers.contains(LudoPlayerType.red),
+                        playerColor:
+                            is2v2 ? LudoPlayerType.blue : LudoPlayerType.red,
+                        isCurrentTurn: is2v2
+                            ? currentTurn == LudoPlayerType.blue
+                            : currentTurn == LudoPlayerType.red,
+                        isOffline: is2v2
+                            ? offlinePlayers.contains(LudoPlayerType.blue)
+                            : offlinePlayers.contains(LudoPlayerType.red),
                       ),
                     ),
                   ],
@@ -1194,7 +1200,7 @@ class _BoardVarsOverlayState extends State<BoardVarsOverlay> {
           ),
           if (_visible) ...[
             const SizedBox(height: 6),
-            Consumer<Ludo>(
+            Consumer<Ludo2v2>(
               builder: (context, ludo, _) {
                 final boardSize = _ludoBoardSize(context);
                 final boxStep = boardSize / 15;

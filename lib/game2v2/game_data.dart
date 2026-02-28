@@ -1,62 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_database/firebase_database.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:ludo_flutter/constants.dart';
 import 'package:provider/provider.dart';
 import 'package:simple_ripple_animation/simple_ripple_animation.dart';
 import 'dart:async';
 import 'dart:math';
 
-class Audio {
-  static AudioPlayer audioPlayer = AudioPlayer();
+import '../audio.dart';
 
-  static Future<void> playMove() async {
-    var duration = await audioPlayer.setAsset('assets/sounds/move.wav');
-    audioPlayer.play();
-    return Future.delayed(duration ?? Duration.zero);
-  }
 
-  static Future<void> playKill() async {
-    var duration = await audioPlayer.setAsset('assets/sounds/laugh.mp3');
-    audioPlayer.play();
-    return Future.delayed(duration ?? Duration.zero);
-  }
-
-  static Future<void> rollDice() async {
-    var duration =
-        await audioPlayer.setAsset('assets/sounds/roll_the_dice.mp3');
-    audioPlayer.play();
-    return Future.delayed(duration ?? Duration.zero);
-  }
-
-  static Future<void> playTurnChange() async {
-    try {
-      // Use match_found sound or roll_dice sound as turn indicator
-      var duration =
-          await audioPlayer.setAsset('assets/sounds/match_found.mp3');
-      audioPlayer.play();
-      return Future.delayed(duration ?? const Duration(milliseconds: 500));
-    } catch (e) {
-      // Fallback: use roll_dice sound if match_found not available
-      try {
-        var duration =
-            await audioPlayer.setAsset('assets/sounds/roll_the_dice.mp3');
-        audioPlayer.play();
-        return Future.delayed(duration ?? const Duration(milliseconds: 500));
-      } catch (_) {
-        return Future.delayed(const Duration(milliseconds: 500));
-      }
-    }
-  }
-}
-
-class PawnWidget extends StatelessWidget {
+class PawnWidget2v2 extends StatelessWidget {
   final int index;
   final LudoPlayerType type;
   final int step;
   final bool highlight;
 
-  const PawnWidget(this.index, this.type,
+  const PawnWidget2v2(this.index, this.type,
       {super.key, this.highlight = false, this.step = -1});
 
   Map<String, dynamic> toMap() {
@@ -68,8 +27,8 @@ class PawnWidget extends StatelessWidget {
     };
   }
 
-  PawnWidget updateFromMap(Map<dynamic, dynamic> data) {
-    return PawnWidget(
+  PawnWidget2v2 updateFromMap(Map<dynamic, dynamic> data) {
+    return PawnWidget2v2(
       data['index'] ?? index,
       LudoPlayerType.values.firstWhere((e) => e.toString() == data['type']),
       step: data['step'] ?? step,
@@ -79,46 +38,54 @@ class PawnWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color color = Colors.white;
-    switch (type) {
-      case LudoPlayerType.green:
-        color = LudoColor.green;
-        break;
-      case LudoPlayerType.yellow:
-        color = LudoColor.yellow;
-        break;
-      case LudoPlayerType.blue:
-        color = LudoColor.blue;
-        break;
-      case LudoPlayerType.red:
-        color = LudoColor.red;
-        break;
-    }
-    return IgnorePointer(
-      ignoring: !highlight,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          if (highlight)
-            RippleAnimation(
+    // Color choose based on player type, with special handling for 2-player mode:
+    // In 2v2 we want the second player visually BLUE instead of RED.
+    return Consumer<Ludo2v2>(
+      builder: (context, provider, child) {
+        Color color = Colors.white;
+        switch (type) {
+          case LudoPlayerType.green:
+            color = LudoColor.green;
+            break;
+          case LudoPlayerType.yellow:
+            color = LudoColor.yellow;
+            break;
+          case LudoPlayerType.blue:
+            color = LudoColor.blue;
+            break;
+          case LudoPlayerType.red:
+            // If only 2 players, paint RED player as BLUE visually.
+            color = provider.playerCount == 2 ? LudoColor.blue : LudoColor.red;
+            break;
+        }
+
+        // Do NOT block taps based only on highlight; legality is enforced in provider.move().
+        return Stack(
+          alignment: Alignment.center,
+          children: [
+            if (highlight)
+              RippleAnimation(
                 color: color.withOpacity(0.7),
                 minRadius: 12, // smaller ripple
                 repeat: true,
                 ripplesCount: 2,
-                child: const SizedBox.shrink()),
-          Consumer<Ludo>(
-            builder: (context, provider, child) => GestureDetector(
+                child: const SizedBox.shrink(),
+              ),
+            GestureDetector(
               onTap: () {
+                // Actual rules & turn checks are inside provider.move().
                 if (step == -1) {
                   provider.move(type, index, (step + 1) + 1);
                 } else {
-                  provider.move(type, index, (step + 1) + provider.diceResult);
+                  provider.move(
+                      type, index, (step + 1) + provider.diceResult);
                 }
               },
               child: Container(
                 decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(color: color, width: 2)),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 2),
+                ),
                 child: Container(
                   decoration: BoxDecoration(
                     color: color,
@@ -128,23 +95,23 @@ class PawnWidget extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 }
 
-class LudoPlayer {
+class LudoPlayer2v2 {
   final LudoPlayerType type;
   late List<List<double>> path;
   late List<List<double>> homePath;
-  final List<PawnWidget> pawns = [];
+  final List<PawnWidget2v2> pawns = [];
   late Color color;
 
-  LudoPlayer(this.type) {
+  LudoPlayer2v2(this.type) {
     for (int i = 0; i < 4; i++) {
-      pawns.add(PawnWidget(i, type));
+      pawns.add(PawnWidget2v2(i, type));
     }
 
     switch (type) {
@@ -178,14 +145,21 @@ class LudoPlayer {
       pawns.where((element) => element.step > -1).length;
 
   void movePawn(int index, int step) async {
-    pawns[index] = PawnWidget(index, type, step: step, highlight: false);
+    pawns[index] = PawnWidget2v2(index, type, step: step, highlight: false);
   }
 
   void highlightPawn(int index, [bool highlight = true]) {
     var pawn = pawns[index];
     pawns.removeAt(index);
-    pawns.insert(index,
-        PawnWidget(index, pawn.type, highlight: highlight, step: pawn.step));
+    pawns.insert(
+      index,
+      PawnWidget2v2(
+        index,
+        pawn.type,
+        highlight: highlight,
+        step: pawn.step,
+      ),
+    );
   }
 
   void highlightAllPawns([bool highlight = true]) {
@@ -226,9 +200,11 @@ class LudoPlayer {
   }
 }
 
-class Ludo extends ChangeNotifier {
+class Ludo2v2 extends ChangeNotifier {
   bool _isMoving = false;
   bool _stopMoving = false;
+  // Remote animation flag (only for animating opponent moves from Firebase)
+  bool _isRemoteAnimating = false;
   LudoGameState _gameState = LudoGameState.throwDice;
   LudoGameState get gameState => _gameState;
   LudoPlayerType _currentTurn = LudoPlayerType.green;
@@ -274,29 +250,29 @@ class Ludo extends ChangeNotifier {
 
   bool _diceStarted = false;
   bool get diceStarted => _diceStarted;
-  LudoPlayer get currentPlayer =>
+  LudoPlayer2v2 get currentPlayer =>
       players.firstWhere((element) => element.type == _currentTurn);
-  final List<LudoPlayer> players = [];
+  final List<LudoPlayer2v2> players = [];
   final List<LudoPlayerType> winners = [];
 
-  LudoPlayer player(LudoPlayerType type) =>
+  LudoPlayer2v2 player(LudoPlayerType type) =>
       players.firstWhere((element) => element.type == type);
 
   bool checkToKill(
       LudoPlayerType type, int index, int step, List<List<double>> path) {
     bool killSomeone = false;
 
-    // For 2v2 mode: only check Green vs Red
+    // For 2v2 mode: only check Green vs Blue
     // For 4v4 mode: check all players
     final is2v2 = _playerCount == 2;
 
     for (int i = 0; i < 4; i++) {
-      // Only check Green and Red for 2v2 mode
+      // 2v2: Green vs Blue
       if (is2v2) {
         var greenElement = player(LudoPlayerType.green).pawns[i];
-        var redElement = player(LudoPlayerType.red).pawns[i];
+        var blueElement = player(LudoPlayerType.blue).pawns[i];
 
-        // Check Green pawns (only if current player is Red)
+        // Check Green pawns (only if current player is Blue)
         if ((greenElement.step > -1 &&
                 !LudoPath.safeArea.map((e) => e.toString()).contains(
                     player(LudoPlayerType.green)
@@ -311,17 +287,17 @@ class Ludo extends ChangeNotifier {
           }
         }
 
-        // Check Red pawns (only if current player is Green)
-        if ((redElement.step > -1 &&
+        // Check Blue pawns (only if current player is Green)
+        if ((blueElement.step > -1 &&
                 !LudoPath.safeArea.map((e) => e.toString()).contains(
-                    player(LudoPlayerType.red)
-                        .path[redElement.step]
+                    player(LudoPlayerType.blue)
+                        .path[blueElement.step]
                         .toString())) &&
-            type != LudoPlayerType.red) {
-          if (player(LudoPlayerType.red).path[redElement.step].toString() ==
+            type != LudoPlayerType.blue) {
+          if (player(LudoPlayerType.blue).path[blueElement.step].toString() ==
               path[step - 1].toString()) {
             killSomeone = true;
-            player(LudoPlayerType.red).movePawn(i, -1);
+            player(LudoPlayerType.blue).movePawn(i, -1);
             notifyListeners();
           }
         }
@@ -554,9 +530,19 @@ class Ludo extends ChangeNotifier {
   }
 
   void move(LudoPlayerType type, int index, int step) async {
+    // _isMoving normally blocks parallel animations, but sometimes it can stay
+    // true on the local device after a remote animation. In that case we still
+    // want to allow the **current** player to move while in pickPawn state.
     if (_isMoving) {
-      debugPrint('Move blocked: _isMoving is true');
-      return;
+      final isCurrentTurn = type == _currentTurn;
+      final isPickingPawn = _gameState == LudoGameState.pickPawn;
+      if (!(isCurrentTurn && isPickingPawn)) {
+        debugPrint('Move blocked: _isMoving is true');
+        return;
+      } else {
+        debugPrint(
+            'Overriding _isMoving=true for current player during pickPawn');
+      }
     }
     if (isOnlineGame && !isMyTurn) {
       debugPrint(
@@ -735,11 +721,14 @@ class Ludo extends ChangeNotifier {
     _previousPawnSteps.clear(); // Reset previous steps tracking
     offlinePlayers.clear(); // Reset offline players
     players.addAll([
-      LudoPlayer(LudoPlayerType.green),
-      LudoPlayer(LudoPlayerType.yellow),
-      LudoPlayer(LudoPlayerType.blue),
-      LudoPlayer(LudoPlayerType.red),
+      LudoPlayer2v2(LudoPlayerType.green),
+      LudoPlayer2v2(LudoPlayerType.yellow),
+      LudoPlayer2v2(LudoPlayerType.blue),
+      LudoPlayer2v2(LudoPlayerType.red),
     ]);
+
+    // Note: for 2-player mode we use Green vs Blue logically.
+    // Red & Yellow players stay idle and are ignored by board/filter logic.
     // Initialize previous steps for all pawns
     for (var player in players) {
       for (int i = 0; i < player.pawns.length; i++) {
@@ -758,7 +747,12 @@ class Ludo extends ChangeNotifier {
         playerList.isNotEmpty) {
       _initOnlineGame(playerList);
     }
-    notifyListeners();
+
+    // startGame() is called from GameScreen2v2.initState; defer notifyListeners
+    // to next frame to avoid "setState() called during build" assertion.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      notifyListeners();
+    });
   }
 
   static const List<LudoPlayerType> _colorOrder = [
@@ -794,8 +788,9 @@ class Ludo extends ChangeNotifier {
     if (myIndex < 0) myIndex = 0;
 
     // Assign color based on sorted position
+    // 2-player: Green (P1) vs Blue (P2)
     _myColor = _playerCount == 2
-        ? (myIndex == 0 ? LudoPlayerType.green : LudoPlayerType.red)
+        ? (myIndex == 0 ? LudoPlayerType.green : LudoPlayerType.blue)
         : _colorOrder[myIndex.clamp(0, 3)];
 
     _matchRef = FirebaseDatabase.instance.ref('games/$_matchId');
@@ -1009,10 +1004,12 @@ class Ludo extends ChangeNotifier {
         }
 
         // Animate movements if any (BEFORE updating final state)
-        if (movementsToAnimate.isNotEmpty && !_isMoving) {
+        // Use separate flag so local _isMoving (for this device's moves)
+        // does NOT block remote opponent animations.
+        if (movementsToAnimate.isNotEmpty && !_isRemoteAnimating) {
           debugPrint(
-              'Animating ${movementsToAnimate.length} remote pawn movements');
-          _isMoving = true;
+              'Animating ${movementsToAnimate.length} remote pawn movements (2v2)');
+          _isRemoteAnimating = true;
           _gameState = LudoGameState.moving;
           notifyListeners();
 
@@ -1024,7 +1021,7 @@ class Ludo extends ChangeNotifier {
             final selectedPlayer = player(playerType);
 
             debugPrint(
-                'Animating ${playerType.name} pawn $index from step $fromStep to $toStep');
+                'Animating ${playerType.name} pawn $index from step $fromStep to $toStep (2v2)');
 
             // Start from previous step (reset to start position)
             selectedPlayer.movePawn(index, fromStep);
@@ -1051,12 +1048,13 @@ class Ludo extends ChangeNotifier {
             }
           }
 
-          _isMoving = false;
+          _isRemoteAnimating = false;
           _gameState = LudoGameState.throwDice;
           notifyListeners();
-          debugPrint('Animation completed');
+          debugPrint('Animation completed (2v2)');
         } else if (movementsToAnimate.isNotEmpty) {
-          debugPrint('Skipping animation: _isMoving = $_isMoving');
+          debugPrint(
+              'Skipping remote animation (2v2): _isRemoteAnimating = $_isRemoteAnimating');
         }
 
         // Update all players' pawns to final state (after animation or if no animation needed)
@@ -1200,7 +1198,7 @@ class Ludo extends ChangeNotifier {
   int _playerCount = 4;
   int get playerCount => _playerCount;
 
-  /// Next turn - for 2v2 only Green<->Red, for 4v4 cycles all
+  /// Next turn - for 2v2 only Green<->Blue, for 4v4 cycles all
   void nextTurnForMode() {
     // Clear highlights for all players when turn changes
     for (var player in players) {
@@ -1208,11 +1206,11 @@ class Ludo extends ChangeNotifier {
     }
 
     if (_playerCount == 2) {
-      // For 2v2, skip offline players
+      // For 2v2, skip offline players (Green <-> Blue)
       int attempts = 0;
       do {
         _currentTurn = _currentTurn == LudoPlayerType.green
-            ? LudoPlayerType.red
+            ? LudoPlayerType.blue
             : LudoPlayerType.green;
         attempts++;
         if (attempts > 2) break; // Prevent infinite loop
@@ -1244,5 +1242,5 @@ class Ludo extends ChangeNotifier {
     super.dispose();
   }
 
-  static Ludo read(BuildContext context) => context.read();
+  static Ludo2v2 read(BuildContext context) => context.read();
 }

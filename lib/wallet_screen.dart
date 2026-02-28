@@ -2,6 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'app_logger.dart';
+import 'wallet_history_screen.dart';
+
 class WalletScreen extends StatefulWidget {
   final String userId;
 
@@ -12,6 +15,7 @@ class WalletScreen extends StatefulWidget {
 }
 
 class _WalletScreenState extends State<WalletScreen> {
+  final Logger _logger = Logger();
   String userName = '';
   String profilePic = '';
   double walletBalance = 0.0;
@@ -34,24 +38,34 @@ class _WalletScreenState extends State<WalletScreen> {
     });
     final url = Uri.parse(
         'https://ludo.eventsystem.online/api/wallet/wallet.php?user_id=${widget.userId}');
+
+    _logger.i('Wallet API REQUEST → URL: $url');
     try {
       final response = await http.get(url).timeout(
         const Duration(seconds: 15),
         onTimeout: () => throw Exception('Request timed out'),
       );
+
+      _logger.i(
+          'Wallet API RESPONSE → URL: $url, status: ${response.statusCode}, rawBody: ${response.body}');
+
       if (!mounted) return;
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
+        _logger.i('Wallet API DECODED SUCCESS → URL: $url, data: $data');
+
         if (data['status'] == 'success') {
           final user = data['user'];
           if (!mounted) return;
           setState(() {
             userName = user['name'];
-            profilePic = user['profile_picture'];
+            profilePic = _fixProfilePictureUrl(user['profile_picture'] ?? '');
             walletBalance = double.tryParse(user['coin'].toString()) ?? 0.0;
             isLoading = false;
           });
         } else {
+          _logger.e(
+              'Wallet API STATUS ERROR → URL: $url, message: ${data['message']}');
           setState(() {
             isLoading = false;
             isError = true;
@@ -59,6 +73,8 @@ class _WalletScreenState extends State<WalletScreen> {
           });
         }
       } else {
+          _logger.e(
+              'Wallet API HTTP ERROR → URL: $url, status: ${response.statusCode}, body: ${response.body}');
         setState(() {
           isLoading = false;
           isError = true;
@@ -66,6 +82,7 @@ class _WalletScreenState extends State<WalletScreen> {
         });
       }
     } catch (e) {
+      _logger.e('Wallet API EXCEPTION → URL: $url, error: $e');
       if (!mounted) return;
       final msg = e.toString().contains('Failed to fetch') || e.toString().contains('SocketException')
           ? 'Network/CORS error. On Chrome/Web, ensure server has CORS headers. Try mobile app.'
@@ -78,6 +95,29 @@ class _WalletScreenState extends State<WalletScreen> {
     }
   }
 
+  /// Fix profile picture URL (handles double-domain bug)
+  String _fixProfilePictureUrl(String url) {
+    if (url.isEmpty) return '';
+
+    // If backend returned something like
+    // "https://ludo.eventsystem.onlinehttps://lh3.googleusercontent.com/..."
+    if (url.startsWith('https://ludo.eventsystem.onlinehttps://')) {
+      return url.replaceFirst('https://ludo.eventsystem.online', '');
+    }
+
+    // If already a valid absolute URL, keep as is
+    try {
+      final uri = Uri.parse(url);
+      if (uri.hasScheme && uri.hasAuthority) {
+        return url;
+      }
+    } catch (_) {
+      return '';
+    }
+
+    return '';
+  }
+
   // Refresh handler
   Future<void> _refresh() async {
     await fetchWalletData();
@@ -88,13 +128,27 @@ class _WalletScreenState extends State<WalletScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: Text('Wallet', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Wallet', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.deepPurple,
+        iconTheme: const IconThemeData(color: Colors.white),
         actions: [
           IconButton(
-            icon: Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh, color: Colors.white),
             onPressed: _refresh,
             tooltip: 'Refresh',
+          ),
+          IconButton(
+            icon: const Icon(Icons.history, color: Colors.white),
+            tooltip: 'Game History',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) =>
+                      WalletHistoryScreen(userId: widget.userId),
+                ),
+              );
+            },
           ),
         ],
       ),
